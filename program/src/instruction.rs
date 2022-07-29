@@ -25,6 +25,9 @@ impl Instruction {
   // Tag and Route request
   pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
     let (tag, rest) = input.split_first().ok_or(ProgramError::InvalidInstructionData)?;
+    msg!("Input: {:?}", input);
+    msg!("Tag: {:?}", tag);
+    msg!("Rest: {:?}", rest);
 
     Ok(match tag {
       0 => Self::Instruction1(SomeDataStruct1::try_from_slice(&rest)?),

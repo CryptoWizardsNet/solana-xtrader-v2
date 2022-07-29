@@ -19,5 +19,5 @@ solana-program-test = "~1.9.2"
 solana-sdk = "~1.9.2"
 
 [lib]
-name = "x_trader"
+name = "solana_boilerplate"
 crate-type = ["cdylib", "lib"]

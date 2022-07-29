@@ -22,6 +22,9 @@ impl Processor {
     instruction_data: &[u8],
   ) -> ProgramResult {
 
+    // Confirm initialization
+    msg!("Process starting...");
+
     // Unpack Instruction
     let instruction = Instruction::unpack(instruction_data)?;
     msg!("Instruction Received: {:?}", &instruction);
@@ -49,6 +52,7 @@ impl Processor {
     // Extract account(s)
     let account_info_iter = &mut accounts.iter();
     let account_1 = next_account_info(account_info_iter)?;
+    msg!("Account: {:?}", account_1);
     let mut account_user = Account1::try_from_slice(&account_1.data.borrow()).unwrap();
 
     // Ensure Account is owned by the program
