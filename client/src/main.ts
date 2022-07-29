@@ -171,14 +171,18 @@ export async function reportResults(): Promise<void> {
   if (accountInfo === null) {
     throw "Error: cannot find the greeted account";
   }
-  // Convert to number
+  // // Convert to number
   // const view = new Int8Array(accountInfo.data);
   // console.log(view);
+
+  // Convert to schema
   const account = deserialize(
     AccountSchema,
     Account,
     accountInfo.data,
   );
+
+  // Output new account result
   console.log("Account Updated to: ", account);
 }
 
