@@ -75,12 +75,11 @@ async function main() {
   // Only including Post Account if doing a transaction to Post
   let ixAccounts = [{pubkey: authorityAccount, isSigner: true, isWritable: false}];
   ixAccounts.push({pubkey: blogAccount, isSigner: false, isWritable: true});
-  console.log(blogIx.i)
   if (blogIx.i == 0) {
     ixAccounts.push({pubkey: systemProgramId, isSigner: false, isWritable: true});
   } else {
     ixAccounts.push({pubkey: postAccount, isSigner: false, isWritable: true});
-    ixAccounts.push({pubkey: systemProgramId, isSigner: false, isWritable: true});
+    ixAccounts.push({pubkey: systemProgramId, isSigner: false, isWritable: false});
   }
 
   // Call Transaction
@@ -100,7 +99,7 @@ async function main() {
   // View Results
   await viewBlogAccount(connection, blogAccount);
   await viewPostAccount(connection, postAccount);
-  await viewAllAccounts(connection, PROGRAM_ID);
+  // await viewAllAccounts(connection, PROGRAM_ID);
 };
 
 
@@ -153,7 +152,7 @@ async function viewPostAccount(connection: Connection, account: PublicKey) {
 // View all Program Owned Accounts
 async function viewAllAccounts(connection: Connection, programId: PublicKey) {
   // "processed" | "confirmed" | "finalized" | "recent" | "single" | "singleGossip" | "root" | "max" | << Optional
-  const accounts = await connection.getProgramAccounts(programId, "single");
+  const accounts = await connection.getProgramAccounts(programId, "confirmed");
   console.log("Program Accounts: ", accounts);
 }
 
