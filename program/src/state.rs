@@ -1,16 +1,26 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{program_error::ProgramError, pubkey::Pubkey, msg};
-use std::mem;
+use solana_program::{pubkey::Pubkey};
 
-// Account 1 Struct
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct Account1 {
-  pub counter: u8,
+// Account Blog
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct Blog {
+    pub authority: Pubkey,
+    pub bump: u8,
+    pub post_count: u8 // 10 posts max
 }
 
-// Account 1 Length Function
-impl Account1 {
-  pub fn len_space() -> Result<usize, ()> {
-    Ok(mem::size_of::<u8>())
-  }
+// Get LEN of Blog
+impl Blog {
+  pub const LEN: usize = 32 + 1 + 1;
+}
+
+// Account Post
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct Post {
+    pub author: Pubkey,
+    pub blog: Pubkey,
+    pub bump: u8,
+    pub slug: String, // 10 chars max
+    pub title: String, // 20 chars max
+    pub content: String, // 50 chars max
 }

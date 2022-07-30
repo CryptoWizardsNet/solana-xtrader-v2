@@ -11,189 +11,151 @@ import {
 import path from 'path';
 import { serialize, deserialize, deserializeUnchecked } from "borsh";
 import {getPayer, getRpcUrl, createKeypairFromFile} from './utils';
+import * as borsh from "@project-serum/borsh";
 
-
-/**
-    CONNECTION AND PAYER ////////////////////////////////////////////////
-**/
-
-
-// Connect to Solana and get Payer
-const RPC_URL = "http://127.0.0.1:8899"
-let connection: Connection;
-let payer: Keypair;
-async function connectPayer() {
-  connection = new Connection(RPC_URL, "confirmed");
-  payer = await getPayer();
+// Structure for Blog Instruction
+class BlogIx {
+  i: number; s: string; y: string; z: string;
+  constructor(i: number, s: string, y: string, z: string) {
+      this.i = i; // Instruction
+      this.s = s; // Slug
+      this.y = y; // Title
+      this.z = z; // Content
+  }
 }
 
+// Run Client
+async function main() {
 
-/**
-    PROGRAM ID //////////////////////////////////////////////////////////
-**/
+  // Connect
+  const RPC_URL = "http://127.0.0.1:8899"
+  const connection = new Connection(RPC_URL, "confirmed");
 
+  // Wallet(s)
+  const wallet = await getPayer();
 
-// Define Program Id
-let programId: PublicKey;
-async function getProgramPublicKey(): Promise<void> {
+  // Extract Program ID Address
   const PROGRAM_PATH = path.resolve(__dirname, '../../program/target/deploy/');
-  const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'solana_boilerplate-keypair.json');
+  const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'blog-keypair.json');
   const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-  programId = programKeypair.publicKey;
-}
+  const PROGRAM_ID: PublicKey = programKeypair.publicKey;
 
+  // Build Instruction for Blog with Post]
+  const POSTN = 1; // Increment each time you run for Post slug (as slug is used in PDA)
+  const blogIx = new BlogIx(0, 'slug' + POSTN, 'My Title' + POSTN, 'My Content' + POSTN); // 0 for Blog Init, 1 for Create Post
+  const schema = new Map([[BlogIx, { kind: 'struct', fields: [['i', 'u8'], ['s', 'string'], ['y', 'string'], ['z', 'string']] }]]);
+  const instruction_data = serialize(schema, blogIx);
+  console.log("Instruction Data: ", instruction_data);
 
-/**
-    ACCOUNT AND INSTRUCTION SCHEMA //////////////////////////////////////////////////
-**/
+  // Authority Account
+  const authorityAccount = wallet.publicKey;
 
-
-// ACCOUNT CLASS
-class Account {
-  counter = 0;
-  constructor(fields: {counter: number} | undefined = undefined) {
-    if (fields) {
-      this.counter = fields.counter;
-    }
-  }
-}
-
-// INSTRUCTION SCHEMA
-const AccountSchema = new Map([
-  [Account, {kind: 'struct', fields: [['counter', 'u8']]}],
-]);
-
-// ACCOUNT DATA
-const account_data = serialize(
-  AccountSchema,
-  new Account(),
-);
-
-
-// INSTRUCTION CLASS
-class Instruction {
-  tag = 0;
-  some_data = 10;
-  constructor(fields: {tag: number, some_data: number} | undefined = undefined) {
-    if (fields) {
-      this.tag = fields.tag;
-      this.some_data = fields.some_data;
-    }
-  }
-}
-
-// INSTRUCTION SCHEMA
-const InstructionSchema = new Map([
-  [Instruction, {kind: 'struct', fields: [['tag', 'u8'], ['some_data', 'u8']]}],
-]);
-
-// INSTRUCTION BUFFER BYTE ARRAY
-const instruction_data = Buffer.from(serialize(
-  InstructionSchema,
-  new Instruction(),
-));
-
-// INSTRUCTION CHECK
-// const instruction_data = Buffer.from(new Uint8Array([0, 10]));
-console.log("Serialized Instruction: ", instruction_data);
-
-
-/**
-    ACCOUNT MANAGEMENT //////////////////////////////////////////////////
-**/
-
-
-// Structure and Add Accounts to Solana
-let callPubkey: PublicKey;
-async function accountManagement(): Promise<void> {
-  // Note, if this is rejected, it might be because you need to remove the key's saved
-  const arr1Length = account_data.length; // Number of bytes in Account1
-
-  // Derive the address (public key) of a greeting account from the program so that it's easy to find later.
-  const KEY_SEED = "my test key seed";
-  callPubkey = await PublicKey.createWithSeed(
-    payer.publicKey,
-    KEY_SEED,
-    programId,
+  // Generate PDA - Blog
+  const [blogAccount] = await PublicKey.findProgramAddress(
+    [Buffer.from("blog"), wallet.publicKey.toBuffer()],
+    PROGRAM_ID
   );
 
-  // Check if account already exists and create account if not
-  const betAccount = await connection.getAccountInfo(callPubkey);
-  if (betAccount === null) {
+  // Generate PDA - Post
+  const [postAccount] = await PublicKey.findProgramAddress(
+    [Buffer.from("post"), Buffer.from(blogIx.s), wallet.publicKey.toBuffer()],
+    PROGRAM_ID
+  );
 
-    // Check Lamports required for creating account
-    const lamports = await connection.getMinimumBalanceForRentExemption(arr1Length);
+  // System Program
+  const systemProgramId = SystemProgram.programId;
 
-    // Build Transaction to Create Account
-    const transaction = new Transaction().add(
-      SystemProgram.createAccountWithSeed({
-        fromPubkey: payer.publicKey,
-        basePubkey: payer.publicKey,
-        seed: KEY_SEED,
-        newAccountPubkey: callPubkey,
-        lamports,
-        space: arr1Length,
-        programId,
-      }),
-    );
+  // Confirm Accounts
+  console.log('Authority Account: ', authorityAccount.toBase58());
+  console.log('Blog Account: ', blogAccount.toBase58());
+  console.log('Post Account: ', postAccount.toBase58());
+  console.log('System Program Account: ', systemProgramId.toBase58());
 
-    // Send Transaction for Creating Account
-    await sendAndConfirmTransaction(connection, transaction, [payer]);
+  // Determine Instruction Accounts
+  // Only including Post Account if doing a transaction to Post
+  let ixAccounts = [{pubkey: authorityAccount, isSigner: true, isWritable: false}];
+  ixAccounts.push({pubkey: blogAccount, isSigner: false, isWritable: true});
+  console.log(blogIx.i)
+  if (blogIx.i == 0) {
+    ixAccounts.push({pubkey: systemProgramId, isSigner: false, isWritable: true});
+  } else {
+    ixAccounts.push({pubkey: postAccount, isSigner: false, isWritable: true});
+    ixAccounts.push({pubkey: systemProgramId, isSigner: false, isWritable: true});
   }
-}
 
-
-/**
-    CALL PROGRAM //////////////////////////////////////////////////
-**/
-
-
-// Place your Bitcoin Bet
-export async function placeCall(): Promise<void> {
-  console.log('Placing call for Account: ', callPubkey.toBase58());
-  console.log('Account signed by: ', payer.publicKey.toBase58());
-  console.log('Program Id: ', programId.toBase58());
-  const instruction = new TransactionInstruction({
-    keys: [{pubkey: callPubkey, isSigner: false, isWritable: true}],
-    programId,
-    data: instruction_data,
+  // Call Transaction
+  const ix = new TransactionInstruction({
+    keys: ixAccounts,
+    programId: PROGRAM_ID,
+    data: Buffer.from(instruction_data),
   });
+
+  // Send  Instruction
   await sendAndConfirmTransaction(
     connection,
-    new Transaction().add(instruction),
-    [payer],
-  );
-}
-
-// View Results
-export async function reportResults(): Promise<void> {
-  const accountInfo = await connection.getAccountInfo(callPubkey);
-  if (accountInfo === null) {
-    throw "Error: cannot find the greeted account";
-  }
-  // // Convert to number
-  // const view = new Int8Array(accountInfo.data);
-  // console.log(view);
-
-  // Convert to schema
-  const account = deserialize(
-    AccountSchema,
-    Account,
-    accountInfo.data,
+    new Transaction().add(ix),
+    [wallet],
   );
 
-  // Output new account result
-  console.log("Account Updated to: ", account);
+  // View Results
+  await viewBlogAccount(connection, blogAccount);
+  await viewPostAccount(connection, postAccount);
+  await viewAllAccounts(connection, PROGRAM_ID);
+};
+
+
+/**
+  VIEW ACCOUNT DATA ////////////////////////////////////////////////////
+ */
+// Get Blog Account
+async function viewBlogAccount(connection: Connection, account: PublicKey) {
+
+  // Define Blog Account Structure
+  const BLOG_ACCOUNT_DATA_LAYOUT = borsh.struct([
+    borsh.publicKey("authorityPubkey"),
+    borsh.u8("bump"),
+    borsh.u8("postCount"),
+  ]);
+
+  // Get Blog Account Current State
+  const blogAccountInfo = await connection.getAccountInfo(account);
+
+  // Decode and Show Blog Account
+  if (blogAccountInfo) { 
+    const blogAccountData = BLOG_ACCOUNT_DATA_LAYOUT.decode(blogAccountInfo.data);
+    console.log("Blog Account Info: \n", blogAccountData);
+  };
+};
+
+// View Post Account
+async function viewPostAccount(connection: Connection, account: PublicKey) {
+
+  // Define Post Account Structure
+  const POST_ACCOUNT_DATA_LAYOUT = borsh.struct([
+    borsh.publicKey("author"),
+    borsh.publicKey("blog"),
+    borsh.u8("bump"),
+    borsh.str("slug"),
+    borsh.str("title"),
+    borsh.str("content"),
+  ]);
+
+  // Get Post Account Current Info
+  const postAccountInfo = await connection.getAccountInfo(account);
+
+  // Decode and Show Post Account
+  if (postAccountInfo) { 
+    const postAccountData = POST_ACCOUNT_DATA_LAYOUT.decode(postAccountInfo.data);
+    console.log("Post Account Info: \n", postAccountData);
+  };
+};
+
+// View all Program Owned Accounts
+async function viewAllAccounts(connection: Connection, programId: PublicKey) {
+  // "processed" | "confirmed" | "finalized" | "recent" | "single" | "singleGossip" | "root" | "max" | << Optional
+  const accounts = await connection.getProgramAccounts(programId, "single");
+  console.log("Program Accounts: ", accounts);
 }
 
-// Main Function Calls
-async function main() {
-  await connectPayer();
-  await getProgramPublicKey();
-  await accountManagement();
-  await placeCall();
-  await reportResults();
-}
-
-// Call Main
+// Run Main
 main();
