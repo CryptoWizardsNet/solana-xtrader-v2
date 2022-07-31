@@ -1,56 +1,65 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{program_error::ProgramError, pubkey::Pubkey, msg};
-use crate::error::BlogError;
-use std::mem;
+use crate::error::TradeError;
 
-// Blog Instruction
+
+// MAKE
+// Make Instruction
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub enum BlogInstruction {
-
-  /// Accounts expected:
-  /// 
-  /// 0. `[signer]` User account who is creating the blog
-  /// 1. `[writable]` Blog account derived from PDA
-  /// 2. `[]` The System Program
-  InitBlog {},
-
-  /// Accounts expected:
-  /// 
-  /// 0. `[signer]` User account who is creating the post
-  /// 1. `[writable]` Blog account for which post is being created
-  /// 2. `[writable]` Post account derived from PDA
-  /// 3. `[]` System Program
-  CreatePost {
-      slug: String,
-      title: String,
-      content: String,
-  }
+pub struct Make {
+  pub symbol: String,
+  pub slug: String, // For unique Trade Account creation
+  pub contract_size: u8, // 0 = 0.1 Sol, 1 = 1 Sol and 2 = 5 Sol
+  pub direction: u8, // 0 = Long, 1 = Short
+  pub duration: u8, // 0 = 5Min, 1 = 1 Hour, 2 = 1 Day
+  pub benchmark_price: u32,
+  pub closing_price: u32,
 }
 
-// Post Payload
-#[derive(BorshDeserialize, Debug)]
-struct PostIxPayload {
-    slug: String,
-    title: String,
-    content: String
+// TAKE
+// Take Instruction
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub struct Take {
+  pub account_ref: Pubkey,
+}
+
+// Trade Instruction
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub enum TradeInstruction {
+  MakeTrade(Make),
+  TakeTrade(Take),
 }
 
 // Unpack Instruction
-impl BlogInstruction {
+impl TradeInstruction {
   pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    let (tag, rest) = input.split_first().ok_or(BlogError::InvalidInstruction)?;
+    let (tag, rest) = input.split_first().ok_or(TradeError::InvalidInstruction)?;
     msg!("Tag: {:?}", tag);
-    let payload = PostIxPayload::try_from_slice(rest).unwrap();
-    msg!("Payload: {:?}", payload);
 
     Ok(match tag {
-        0 => Self::InitBlog {},
-        1 => Self::CreatePost {
-            slug: payload.slug,
-            title: payload.title,
-            content: payload.content
+        0 => {
+          let payload = Make::try_from_slice(rest).unwrap();
+          msg!("Payload: {:?}", payload);
+          Self::MakeTrade ( Make {
+              symbol: payload.symbol,
+              slug: payload.slug,
+              contract_size: payload.contract_size,
+              direction: payload.direction,
+              duration: payload.duration,
+              benchmark_price: payload.benchmark_price,
+              closing_price: payload.closing_price,
+            }
+          )
         },
-        _ => return Err(BlogError::InvalidInstruction.into()),
+        1 => {
+          let payload = Take::try_from_slice(rest).unwrap();
+          msg!("Payload: {:?}", payload);
+          Self::TakeTrade ( Take {
+              account_ref: payload.account_ref,
+            }
+          )
+        },
+        _ => return Err(TradeError::InvalidInstruction.into()),
     })
   }
 }

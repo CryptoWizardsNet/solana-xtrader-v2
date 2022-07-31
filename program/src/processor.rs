@@ -8,11 +8,12 @@ use solana_program::{
   pubkey::Pubkey,
   msg,
   program_error::ProgramError, system_instruction, program::invoke_signed,
+  clock::Clock,
 };
 use std::mem;
-use crate::instruction::{BlogInstruction};
-use crate::state::{Blog, Post};
-use crate::error::BlogError;
+use crate::instruction::{TradeInstruction, Make, Take};
+use crate::state::{User, Trade};
+use crate::error::TradeError;
 
 
 // PROCESSOR
@@ -30,178 +31,191 @@ impl Processor {
     msg!("Process starting...");
 
     // Unpack Instruction
-    let instruction = BlogInstruction::unpack(instruction_data)?;
+    let instruction = TradeInstruction::unpack(instruction_data)?;
     msg!("Instruction Received: {:?}", &instruction);
 
     // Route Instruction
     match instruction {
-        BlogInstruction::InitBlog {} => {
-            msg!("Instruction: InitBlog");
-            Self::process_init_blog(accounts, program_id)
+        TradeInstruction::MakeTrade (trade) => {
+            msg!("Instruction: Make Trade");
+            Self::open_trade(program_id, accounts, trade)
         },
-        BlogInstruction::CreatePost { slug, title, content} => {
-            msg!("Instruction: CreatePost");
-            Self::process_create_post(accounts, slug, title, content, program_id)
-        }
+        TradeInstruction::TakeTrade (trade) => {
+            msg!("Instruction: Take Trade");
+            Self::take_trade(program_id, accounts, trade)
+        },
     }
   }
 
-  // Create POST
-  fn process_create_post(
+  
+  // Take Trade
+  fn take_trade(
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
-    slug: String,
-    title: String,
-    content: String,
-    program_id: &Pubkey
+    trade: Take,
   ) -> ProgramResult {
 
-    // Guard: Ensure character count not exceeded
-    if slug.len() > 10 || content.len() > 20 || title.len() > 50 {
-        return Err(BlogError::InvalidPostData.into())
-    }
-
-    // Get Accounts
+    // Extract Accounts
     let account_info_iter = &mut accounts.iter();
-    let authority_account = next_account_info(account_info_iter)?;
-    let blog_account = next_account_info(account_info_iter)?;
-    let post_account = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
+    let taker_authority_account = next_account_info(account_info_iter)?; // Holder = User
+    let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA) Created by Maker
 
-    // Guard: Ensure Signer
-    if !authority_account.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
+    // Guard: Signer
+    if !taker_authority_account.is_signer {
+      return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Generate Program Derived Address (PDA) for Blog
-    let (blog_pda, _blog_bump) = Pubkey::find_program_address(
-        &[b"blog".as_ref(), authority_account.key.as_ref()],
-        program_id
-    );
+    // GET CHAINLINK PRICE HERE !!!!!!!!!
+    let chainlink_price = 47;
 
-    // Guard: Ensure PDA Matches account and Blog Account is Writable and has been initialized
-    if blog_pda != *blog_account.key || !blog_account.is_writable || blog_account.data_is_empty() {
-        return Err(BlogError::InvalidBlogAccount.into())
+    // // Get Clock !!! CHANGE FOR PRODUCTION !!!!!!!!!
+    // let clock = Clock::get()?;
+    let unix_start = 1659167706; /// !!! REMOVE IN PRODUCTION
+    let mut unix_end = unix_start;
+
+    // Get Trade Account
+    let mut trade_account_state = try_from_slice_unchecked::<Trade>(&trade_account.data.borrow())?;
+    msg!("Lamports Required: {:?}", trade_account_state);
+
+    // ADD IN PRODUCTION !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // // Guard: Ensure A Match is Not Already Existing
+    // if trade_account_state.order_status != 1 {
+    //   return Err(TradeError::AlreadyExistingTrade.into())
+    // }
+
+    // Calculate Trade Lamports for Trade Contracts
+    let trade_lamports: u64;
+    match trade_account_state.contract_size {
+      0 => {trade_lamports = 1_000_000_00}, // 0.1 SOL
+      1 => {trade_lamports = 1_000_000_000}, // 1 SOL
+      5 => {trade_lamports = 5_000_000_000}, // 5 SOL
+      _ => return Err(TradeError::InvalidContractSize.into())
     }
 
-    // Generate Program Derived Address (PDA) for Post
-    let (post_pda, post_bump) = Pubkey::find_program_address(
-        &[b"post".as_ref(), slug.as_ref(), authority_account.key.as_ref()],
-        program_id
-    );
-
-    // Guard: Ensure Post Account matches account key
-    if post_pda != *post_account.key {
-        return Err(BlogError::InvalidPostAccount.into())
+    // Guard: Transfer Lamports check
+    if **taker_authority_account.try_borrow_lamports()? < trade_lamports {
+      return Err(TradeError::NotEnoughLamports.into());
     }
 
-    // Calculate Rent Exempt
-    let post_len = 32 + 32 + 1 + (4 + slug.len()) + (4 + title.len()) + (4 + content.len());
-    let rent = Rent::get()?;
-    let rent_lamports = rent.minimum_balance(post_len);
+    // Transfer Lamports
+    **taker_authority_account.try_borrow_mut_lamports()? -= trade_lamports;
+    **trade_account.try_borrow_mut_lamports()? += trade_lamports;
 
-    // Build Transaction
-    let create_post_pda_ix = &system_instruction::create_account(
-        authority_account.key,
-        post_account.key,
-        rent_lamports,
-        post_len.try_into().unwrap(),
-        program_id
-    );
+    // Update Trade Account
+    trade_account_state.taker = *taker_authority_account.key;
+    trade_account_state.unix_start = unix_start;
+    trade_account_state.benchmark_price = chainlink_price;
+    trade_account_state.order_status = 2;
+    trade_account_state.serialize(&mut &mut trade_account.data.borrow_mut()[..])?;
+    match trade_account_state.duration {
+      0 => {unix_end += 5 * 60},
+      1 => {unix_end += 60 * 60},
+      2 => {unix_end += 24 * 60 * 60},
+      _ => {return Err(TradeError::InvalidDurationCalculation.into())}
+    }
+    trade_account_state.unix_end += unix_end;
+    trade_account_state.serialize(&mut &mut trade_account.data.borrow_mut()[..])?;
 
-    // Create Post Account (invoke signed as using PDA)
-    msg!("Creating post account!");
-    invoke_signed(
-        create_post_pda_ix, 
-        &[authority_account.clone(), post_account.clone(), system_program.clone()],
-        &[&[b"post".as_ref(), slug.as_ref(), authority_account.key.as_ref(), &[post_bump]]]
-    )?;
+    // Update User Account State
+    let mut user_account_state = User::try_from_slice(&taker_authority_account.data.borrow())?;
+    user_account_state.trades_placed += 1;
+    user_account_state.serialize(&mut &mut taker_authority_account.data.borrow_mut()[..])?;
 
-    // Get Current Post Account State
-    let mut post_account_state = try_from_slice_unchecked::<Post>(&post_account.data.borrow()).unwrap();
-
-    // Make State Adjustments
-    post_account_state.author = *authority_account.key;
-    post_account_state.blog = *blog_account.key;
-    post_account_state.bump = post_bump;
-    post_account_state.slug = slug;
-    post_account_state.title = title;
-    post_account_state.content = content;
-
-    // Update State with New Post
-    msg!("Serializing Post data");
-    post_account_state.serialize(&mut &mut post_account.data.borrow_mut()[..])?;
-
-    // Get Blog Account State
-    let mut blog_account_state = Blog::try_from_slice(&blog_account.data.borrow())?;
-    blog_account_state.post_count += 1;
-
-    // Update Blog State with latest adjustment
-    msg!("Serializing Blog data");
-    blog_account_state.serialize(&mut &mut blog_account.data.borrow_mut()[..])?;
-
-    // Return Result
+    // Return
     Ok(())
   }
 
-  // CREATE BLOG
-  fn process_init_blog(
+  // Open Trade
+  fn open_trade(
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
-    program_id: &Pubkey
+    trade: Make,
   ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let authority_account = next_account_info(account_info_iter)?;
-    let blog_account = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
 
+    // extract Accounts
+    let account_info_iter = &mut accounts.iter();
+    let authority_account = next_account_info(account_info_iter)?; // Holder = User
+    let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA)
+    let system_program = next_account_info(account_info_iter)?; // Holder = Program (System Program)
+    
     // Guard: Signer
     if !authority_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
     // Generate Program Derived Address (PDA)
-    let (blog_pda, blog_bump) = Pubkey::find_program_address(
-        &[b"blog".as_ref(), authority_account.key.as_ref()],
+    let (trade_pda, trade_bump) = Pubkey::find_program_address(
+        &[b"trade".as_ref(), trade.slug.as_ref(), authority_account.key.as_ref()],
         program_id 
     );
 
     // Guard: Ensure Account Key Received Matches PDA
-    if blog_pda != *blog_account.key {
-        return Err(BlogError::InvalidBlogAccount.into())
+    if trade_pda != *trade_account.key {
+      return Err(TradeError::InvalidTradeAccount.into())
     }
 
-    // Calculate Lamports needed for PDA
-    let rent = Rent::get()?;
-    let rent_lamports = rent.minimum_balance(Blog::LEN);
-    
-    // Build Transaction for Account Creation
-    let create_blog_pda_ix = &system_instruction::create_account(
-        authority_account.key,
-        blog_account.key,
-        rent_lamports,
-        Blog::LEN.try_into().unwrap(),
-        program_id
+    // CHANGE ON DEPLOYMENT !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // // Calculate Lamports needed for PDA
+    // let rent = Rent::get()?;
+    // let rent_lamports = rent.minimum_balance(Trade::LEN);
+    let mut rent_lamports: u64 = 100_000; // DELETE ON DEPLOYMENT !!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    // Calculate Trade Lamports for Trade Contracts
+    let trade_lamports: u64;
+    match trade.contract_size {
+      0 => {trade_lamports = 1_000_000_00}, // 0.1 SOL
+      1 => {trade_lamports = 1_000_000_000}, // 1 SOL
+      5 => {trade_lamports = 5_000_000_000}, // 5 SOL
+      _ => return Err(TradeError::InvalidContractSize.into())
+    }
+
+    // Add Trade Lamports to Rent Lamports
+    rent_lamports += trade_lamports;
+
+    // Build Transaction for Trade PDA Account Creation
+    let create_trade_pda_ix = &system_instruction::create_account(
+      authority_account.key,
+      trade_account.key,
+      rent_lamports,
+      Trade::LEN.try_into().unwrap(),
+      program_id
     );
 
-    // Create Blog Account (invoke signed as using PDA)
-    msg!("Creating blog account!");
+    // Create Trade Account (invoke signed as using PDA)
+    msg!("Creating Trade account!");
     invoke_signed(
-        create_blog_pda_ix, 
-        &[authority_account.clone(), blog_account.clone(), system_program.clone()],
-        &[&[b"blog".as_ref(), authority_account.key.as_ref(), &[blog_bump]]]
+      create_trade_pda_ix, 
+        &[authority_account.clone(), trade_account.clone(), system_program.clone()],
+        &[&[b"trade".as_ref(), trade.slug.as_ref(), authority_account.key.as_ref(), &[trade_bump]]]
     )?;
 
-    // Get Current Blog Account State
-    let mut blog_account_state = Blog::try_from_slice(&blog_account.data.borrow())?;
+    // Get Current Trade Account State
+    // Use Unchecked if working with Strings
+    let mut trade_account_state = try_from_slice_unchecked::<Trade>(&trade_account.data.borrow())?;
+    msg!("trade_account_state: {:?}", &trade_account_state);
 
-    // Make Blog Account State Adjustments
-    blog_account_state.authority = *authority_account.key;
-    blog_account_state.bump = blog_bump;
-    blog_account_state.post_count = 0;
+    // Update Trade Account Information
+    trade_account_state.maker = *authority_account.key;
+    trade_account_state.bump = trade_bump;
+    trade_account_state.symbol = trade.symbol;
+    trade_account_state.contract_size = trade.contract_size;
+    trade_account_state.direction = trade.direction;
+    trade_account_state.duration = trade.duration;
+    trade_account_state.benchmark_price = trade.benchmark_price;
+    trade_account_state.order_status = 1; // see state
 
-    // Update To New State
-    blog_account_state.serialize(&mut &mut blog_account.data.borrow_mut()[..])?;
+    // Update State with New Trade
+    msg!("Serializing Trade data");
+    trade_account_state.serialize(&mut &mut trade_account.data.borrow_mut()[..])?;
 
-    // Return Result
+    // Update User Account State
+    let mut user_account_state = User::try_from_slice(&authority_account.data.borrow())?;
+    user_account_state.trades_placed += 1;
+    user_account_state.serialize(&mut &mut authority_account.data.borrow_mut()[..])?;
+
+    // Return
+    msg!("Open Order Created");
     Ok(())
   }
+
 } 

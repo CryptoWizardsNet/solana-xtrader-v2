@@ -5,26 +5,38 @@ use thiserror::Error;
 
 // Custom Error Enum
 #[derive(Error, Debug, Copy, Clone)]
-pub enum BlogError {
+pub enum TradeError {
     #[error("Invalid Instruction")]
     InvalidInstruction,
 
-    #[error("Invalid Blog Account")]
-    InvalidBlogAccount,
+    #[error("Invalid User Account")]
+    InvalidUserAccount,
 
-    #[error("Invalid Post Account")]
-    InvalidPostAccount,
+    #[error("Invalid Trade Account")]
+    InvalidTradeAccount,
 
-    #[error("Invalid Post Data")]
-    InvalidPostData,
+    #[error("Invalid Trade Data")]
+    InvalidTradeData,
+
+    #[error("Invalid Contract Size")]
+    InvalidContractSize,
+
+    #[error("Duration Error")]
+    InvalidDurationCalculation,
+
+    #[error("A Matched Trade Already Exists for This Account")]
+    AlreadyExistingTrade,
+
+    #[error("Not Enough SOL (Lamports)")]
+    NotEnoughLamports,
 
     #[error("Account not Writable")]
     AccountNotWritable,
 }
 
 // Custom Error Function
-impl From<BlogError> for ProgramError {
-    fn from(e: BlogError) -> Self {
+impl From<TradeError> for ProgramError {
+    fn from(e: TradeError) -> Self {
         return ProgramError::Custom(e as u32);
     }
 }
