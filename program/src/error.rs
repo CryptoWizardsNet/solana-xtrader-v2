@@ -27,6 +27,12 @@ pub enum TradeError {
     #[error("A Matched Trade Already Exists for This Account")]
     AlreadyExistingTrade,
 
+    #[error("Not a Vaild Trade To Claim")]
+    InvalidTradeForClaim,
+
+    #[error("Not a Vaild Time for Claim")]
+    InvalidTimeForClaim,
+
     #[error("Not Enough SOL (Lamports)")]
     NotEnoughLamports,
 

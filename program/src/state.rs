@@ -25,14 +25,14 @@ pub struct Trade {
   pub contract_size: u8, // Maker
   pub direction: u8, // Maker
   pub duration: u8, // Maker
-  pub unix_start: u32, // Set by Taker Call
-  pub unix_end: u32, // Set by Taker Call (start + duration)
-  pub benchmark_price: u32, // Set by Taker Call
-  pub closing_price: u32, // Set by Claim Call
-  pub order_status: u8, // 0 = Not Initialized, 1 = OpenOrder, 2 = InPlay, 3 = Claimed
+  pub unix_start: u32, // Taker
+  pub unix_end: u32, // Taker (start + duration)
+  pub benchmark_price: u32, // Taker
+  pub closing_price: u32, // Claimer
+  pub order_status: u8, // All Instructions: 0 = Not Initialized, 1 = OpenOrder, 2 = InPlay, 3 = Claimed
 }
 
 // Get LEN of Trade Account
 impl Trade {
-  pub const LEN: usize = mem::size_of::<Pubkey>() * 2 + mem::size_of::<u32>() * 4 + mem::size_of::<u8>() * 5 + mem::size_of::<String>() * 2 + 8;
+  pub const LEN: usize = mem::size_of::<Pubkey>() * 2 + mem::size_of::<u32>() * 4 + mem::size_of::<u8>() * 5 + mem::size_of::<String>() * 2 + 8; // Add 4 Bytes per String
 }

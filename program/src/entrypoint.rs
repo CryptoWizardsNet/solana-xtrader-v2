@@ -77,28 +77,26 @@ mod test {
     let system_account = account.clone();
     let accounts = vec![account, account_pda, system_account];
 
-    // // Build Instruction 0 (Make)
-    // let ix_struct = Make {
-    //   symbol: String::from("SOLUSD"),
-    //   slug: slug,
-    //   contract_size: 1, // 1 Sol
-    //   direction: 0, // Long
-    //   duration: 0, // 5Min
-    //   benchmark_price: 0,
-    //   closing_price: 0
-    // };
-
-    // Build Instruction 1 (Take)
-    let ix_struct = Take {
-      account_ref: Pubkey::default(),
+    // Build Instruction 0 (Make)
+    let ix_struct = Make {
+      symbol: String::from("SOLUSD"),
+      slug: slug,
+      contract_size: 1, // 1 Sol
+      direction: 0, // Long
+      duration: 0, // 5Min
     };
+
+    // // Build Instruction 1 (Take)
+    // let ix_struct = Take {
+    //   account_ref: Pubkey::default(),
+    // };
 
     // Convert Instruction into Bytes
     let mut instruction = ix_struct.try_to_vec().unwrap();
 
     // Initialize instruction data with Routing
     let mut instruction_data: Vec<u8> = Vec::new();
-    instruction_data.push(u8::to_le_bytes(1)[0]); // 0 for Make, 1 for Take
+    instruction_data.push(u8::to_le_bytes(0)[0]); // 0 for Make, 1 for Take
 
     // Add Maker Instruction to Instruction Data
     instruction_data.append(&mut instruction);

@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "test": "ts-node src/main.ts"
+    "claim": "ts-node src/claim.ts",
+    "maker": "ts-node src/maker.ts",
+    "taker": "ts-node src/taker.ts"
   },
   "dependencies": {
     "@project-serum/borsh": "^0.2.5",
