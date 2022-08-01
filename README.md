@@ -1,23 +1,25 @@
-Clone Repository via git clone (then enter url)
+<html>
+<h2>How to Run - Program Build</h2>
+<p>After cloning the repo, cd into the Program folder.</p>
+<p>Update the Cargo.toml file to represent a lib name you like.</p>
+<p>Run Cargo Buil and Cargo Build BPF.</p>
+<p>Run the Deploy code presented as solana program deploy ... etc as show in the terminal after the prior step.</p>
 
-cd into program folder
+<h3>Important:</h3>
+<p>You will likely run into issues if running on localhost (http://127.0.0.1:8899).</p>
+<p>You will need to replace Clock.get(), Rent.get() and chainlink calls in the Program processor file if
+wanting to continue on localhost.
+</p>
+<p>Remember that this method of trading will not allow you to claim until the time needed has past.</p>
+<p>Therefore, remove the if statement Guard for that too if you want to test in real time.</p>
 
-cargo build
-
-cargo build-bpf
-
-run solana-test-validator in another terminal and in yet another terminal, solana logs (to view msg's)
-Make sure test-validator url is set to: http://127.0.0.1:8899 (see solana docs for changing cluster)
-
-cargo build-bpf again then run the 'solana program deploy...so' command it recommends to deploy
-
-cd into client folder and npm install
-
-npm run test (make sure you have the solana-test-validator running per step 7)
-
-// Notes
-When running for the firsy time, ensure that the Instruction is set to 0 to create a Blog Account (see main.ts row 44)
-Once a blog account is created, set it to 1 to make a post.
-Each time you want to make a post, the POSTN variable in main.ts should be incremented (as slugs are part of the PDA account creation)
-
-Special thanks to: https://solanacookbook.com/guides/account-maps.html#deriving-pdas
+<h2>How to Run- Client Build</h2>
+<p>Cd into the client folder.</p>
+<p>npm install</p>
+<p>npm run setup maker (This creates a wallet for the Market Maker)</p>
+<p>npm run setup taker (This creates a wallet for the Market Taker and also Claimer as taker is claiming)</p>
+<p>npm run maker</p>
+<p>Paste the tradeAccount address that is printed out on the taker.ts and claim.ts fields near the top of each of the two files.</p>
+<p>This represents the Open Order set by the Maker that can be filled. Once it is filled by the Taker and the designated time has past, it can be claimed.</p>
+<p>npm run claim.</p>
+</html>

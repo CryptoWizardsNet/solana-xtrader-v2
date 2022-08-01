@@ -9,8 +9,10 @@ import {
 } from '@solana/web3.js';
 import path from 'path';
 import { serialize } from "borsh";
-import {getPayer, createKeypairFromFile} from './utils';
+import {getKeypair, createKeypairFromFile, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
+
+// DevNet Program Id: DDagU3EZpAsHKTg3kCptMeJLcHAoWRb6A3NssJ3yC1Sh
 
 // Structure for Blog Instruction
 class MakeIx {
@@ -25,15 +27,15 @@ class MakeIx {
   }
 }
 
+// Connect
+const connection = new Connection(SELECTED_RPC_URL, "confirmed");
+
 // Run Client
 async function main() {
 
-  // Connect
-  const RPC_URL = "http://127.0.0.1:8899"
-  const connection = new Connection(RPC_URL, "confirmed");
-
   // Wallet(s)
-  const wallet = await getPayer();
+  const wallet = await getKeypair("maker"); 
+  console.log(wallet.publicKey.toBase58());
 
   // Extract Program ID Address
   const PROGRAM_PATH = path.resolve(__dirname, '../../program/target/deploy/');
@@ -63,8 +65,8 @@ async function main() {
   console.log("User Account Info Trades Count: ", userTradesCount);
 
   // Build Instruction for Blog with Post]
-  const SLUGN = 14; // Increment each time you run for Post slug (as slug is used in PDA)
-  const tradeIx = new MakeIx(0, "SOLUSD", 'trade' + SLUGN, 1, 1, 0);
+  const SLUGN = 1; // Increment each time you run for Post slug (as slug is used in PDA)
+  const tradeIx = new MakeIx(0, "SOL / USD", 'trade' + SLUGN, 1, 1, 0); // Small Trade 0, Medium Trade 1, Large 2
   const schema = new Map([[MakeIx, { kind: 'struct', fields: [['tag', 'u8'], ['symbol', 'string'], ['slug', 'string'], ['contract_size', 'u8'], ['direction', 'u8'], ['duration', 'u8']]}]]);
   const instruction_data = serialize(schema, tradeIx);
   console.log("Instruction Data: ", instruction_data.length);
@@ -89,6 +91,8 @@ async function main() {
     {pubkey: userAccount.publicKey, isSigner: false, isWritable: true},
     {pubkey: tradeAccount, isSigner: false, isWritable: true},
     {pubkey: systemProgramId, isSigner: false, isWritable: false},
+    {pubkey: accountChainlinkPriceFeed, isSigner: false, isWritable: false},
+    {pubkey: accountChainlinkProgramOwner, isSigner: false, isWritable: false},
   ];
 
   // Call Transaction
@@ -106,16 +110,15 @@ async function main() {
   );
 
   // View Results
-  await viewTradeAccount(connection, tradeAccount);
+  await viewTradeAccount(tradeAccount);
   // await viewAllAccounts(connection, PROGRAM_ID);
 };
-
 
 /**
   VIEW ACCOUNT DATA ////////////////////////////////////////////////////
  */
 // View Trade Account
-async function viewTradeAccount(connection: Connection, account: PublicKey) {
+async function viewTradeAccount(account: PublicKey) {
 
   // Define Post Account Structure
   const TRADE_ACCOUNT_DATA_LAYOUT = borsh.struct([
@@ -129,8 +132,8 @@ async function viewTradeAccount(connection: Connection, account: PublicKey) {
     borsh.u8("duration"),
     borsh.u32("unix_start"),
     borsh.u32("unix_end"),
-    borsh.u32("benchmark_price"),
-    borsh.u32("closing_price"),
+    borsh.i128("benchmark_price"),
+    borsh.i128("closing_price"),
     borsh.u8("order_status"),
   ]);
 
@@ -141,6 +144,7 @@ async function viewTradeAccount(connection: Connection, account: PublicKey) {
   if (tradeAccountInfo) { 
     const postAccountData = TRADE_ACCOUNT_DATA_LAYOUT.decode(tradeAccountInfo.data);
     console.log("Trade Account Info: \n", postAccountData);
+    console.log(postAccountData.maker.toBase58());
   };
 };
 

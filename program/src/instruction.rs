@@ -1,5 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{program_error::ProgramError, pubkey::Pubkey, msg};
+use solana_program::{program_error::ProgramError, msg};
 use crate::error::TradeError;
 
 

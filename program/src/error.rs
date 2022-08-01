@@ -27,7 +27,7 @@ pub enum TradeError {
     #[error("A Matched Trade Already Exists for This Account")]
     AlreadyExistingTrade,
 
-    #[error("Not a Vaild Trade To Claim")]
+    #[error("Not a Valid Trade To Claim")]
     InvalidTradeForClaim,
 
     #[error("Not a Vaild Time for Claim")]
@@ -35,6 +35,12 @@ pub enum TradeError {
 
     #[error("Not Enough SOL (Lamports)")]
     NotEnoughLamports,
+
+    #[error("Chainlink Asset Mismatch")]
+    ChainlinkMismatch,
+
+    #[error("Chainlink Price Incorrect. Try Again Later.")]
+    ChainlinkDataIssue,
 
     #[error("Account not Writable")]
     AccountNotWritable,

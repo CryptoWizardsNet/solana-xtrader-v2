@@ -2,16 +2,20 @@
   "scripts": {
     "claim": "ts-node src/claim.ts",
     "maker": "ts-node src/maker.ts",
+    "setup": "ts-node src/setup.ts",
     "taker": "ts-node src/taker.ts"
   },
   "dependencies": {
+    "@chainlink/solana-sdk": "^0.2.2",
     "@project-serum/borsh": "^0.2.5",
     "@solana/web3.js": "^1.50.1",
+    "bip39": "^3.0.4",
     "borsh": "^0.7.0",
     "mz": "^2.7.0",
     "yaml": "^2.1.1"
   },
   "devDependencies": {
+    "@types/bs58": "^4.0.1",
     "@types/mz": "^2.7.4"
   }
 }

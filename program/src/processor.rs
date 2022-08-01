@@ -1,16 +1,16 @@
+use chainlink_solana as chainlink;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
   sysvar::{rent::Rent, Sysvar},
   borsh::try_from_slice_unchecked,
   account_info::{AccountInfo, next_account_info},
-  entrypoint,
   entrypoint::ProgramResult, 
   pubkey::Pubkey,
   msg,
-  program_error::ProgramError, system_instruction, program::invoke_signed,
+  program_error::ProgramError, system_instruction, program::{invoke_signed},
   clock::Clock,
 };
-use std::mem;
 use crate::instruction::{TradeInstruction, Make, Take};
 use crate::state::{User, Trade};
 use crate::error::TradeError;
@@ -53,7 +53,7 @@ impl Processor {
 
   // Claim Trade
   fn claim_trade(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
   ) -> ProgramResult {
 
@@ -63,6 +63,9 @@ impl Processor {
     let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA) Created by Maker
     let maker_account = next_account_info(account_info_iter)?;
     let taker_account = next_account_info(account_info_iter)?;
+    let _system_program = next_account_info(account_info_iter)?; // Noy used but sent in as PDA Trade Account owner
+    let chainlink_feed_account = next_account_info(account_info_iter)?; // Chainlink Price Feed Data Account
+    let chainlink_program = next_account_info(account_info_iter)?; // Chainlink Program Account
 
     // Guard: Signer
     if !claimer_authority_account.is_signer {
@@ -72,18 +75,19 @@ impl Processor {
     // Get Trade Account
     let mut trade_account_state = try_from_slice_unchecked::<Trade>(&trade_account.data.borrow())?;
 
-    // Guard: Ensure Trade is Claimable
-    if trade_account_state.order_status != 2 {
+    // Guard: Ensure Trade is in InPlay status (i.e. not claimed by started)
+    if !trade_account_state.order_status == 2 {
+      msg!("Trade not in correct order status");
       return Err(TradeError::InvalidTradeForClaim.into())
     }
 
-    // Guard: Ensure Trade Account Details Match Maker and Taker
+    // Guard: Ensure Trade Account Details Match Maker
     if trade_account_state.maker != *maker_account.key {
       msg!("Maker Details do Not Match");
       return Err(TradeError::InvalidTradeAccount.into())
     }
 
-    // Guard: Ensure Trade Account Details Match Maker and Taker
+    // Guard: Ensure Trade Account Details Match Taker
     if trade_account_state.taker != *taker_account.key {
       msg!("Maker Details do Not Match");
       return Err(TradeError::InvalidTradeAccount.into())
@@ -93,17 +97,32 @@ impl Processor {
     let clock = Clock::get()?;
     let unix_current = clock.unix_timestamp as u32;
   
-    // ADD BACK IN PRODUCTION !!!!!!!!!!!!!!!
-    // // Guard: Time Check
-    // if unix_current < trade_account_state.unix_end {
-    //   return Err(TradeError::InvalidTimeForClaim.into())
-    // }
+    // Guard: Time Check
+    if unix_current < trade_account_state.unix_end {
+      msg!("Too early to claim funds. Wait for contract to expire.");
+      return Err(TradeError::InvalidTimeForClaim.into())
+    }
 
-    // GET CHAINLINK PRICE HERE !!!!!!!!!!!!!
-    let chainlink_price = 47;
+    // Get Chainlink Price - // REMEMBER ONLY WORKS ON DEVNET
+    let chainlink_round = chainlink::latest_round_data(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    let chainlink_asset_description = chainlink::description(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    let _chainlink_decimals = chainlink::decimals(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    let chainlink_price = chainlink_round.answer;
+
+    // Guard: Ensure Asset Matches on Trade Account
+    if chainlink_asset_description != trade_account_state.symbol {
+      msg!("Chainlink Symbol Mismatch to Account Provided");
+      return Err(TradeError::ChainlinkMismatch.into())
+    }
+
+    // Guard: Ensure Chainlink Price
+    if chainlink_price == 0 {
+      msg!("Chainlink Price Received as Zero. Chainlink Data Issue.");
+      return Err(TradeError::ChainlinkDataIssue.into())
+    }
 
     // Determine Winner
-    let mut winner: String;
+    let winner: String;
     let mut payee = maker_account;
     let unix_thresh = trade_account_state.unix_end + (1 * 24 * 60 * 60); // 24 hour allowance
     if (trade_account_state.direction == 0) & (chainlink_price > trade_account_state.benchmark_price) {
@@ -117,13 +136,19 @@ impl Processor {
       payee = taker_account;
     }
 
-    // Calculate Rent Needed to Keep Account Record
+    // Update Trade Account
+    trade_account_state.order_status = 3;
+    trade_account_state.closing_price = chainlink_price;
+    trade_account_state.serialize(&mut &mut trade_account.data.borrow_mut()[..])?;
+
+    // Calculate Lamports needed for PDA
     let rent = Rent::get()?;
-    let mut rent_lamports = rent.minimum_balance(Trade::LEN);
+    let rent_lamports = rent.minimum_balance(Trade::LEN);
 
     // Pay Winner
     let tfer_amount = **trade_account.lamports.borrow() - rent_lamports;
     msg!("Lamports to Transfer: {:?}", tfer_amount);
+
     **trade_account.try_borrow_mut_lamports()? -= tfer_amount;
     if winner != "Draw" {
       **payee.try_borrow_mut_lamports()? += tfer_amount;
@@ -132,20 +157,15 @@ impl Processor {
       **taker_account.try_borrow_mut_lamports()? += tfer_amount / 2;
     }
 
-    // Update Trade Account
-    trade_account_state.order_status = 3;
-    trade_account_state.closing_price = chainlink_price;
-    trade_account_state.serialize(&mut &mut trade_account.data.borrow_mut()[..])?;
-
     // Return Result
     Ok(())
   }
   
   // Take Trade
   fn take_trade(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
-    trade: Take,
+    _trade: Take,
   ) -> ProgramResult {
 
     // Extract Accounts
@@ -153,14 +173,14 @@ impl Processor {
     let taker_authority_account = next_account_info(account_info_iter)?; // Holder = User
     let user_account = next_account_info(account_info_iter)?; // Holder = User
     let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA) Created by Maker
+    let _system_program = next_account_info(account_info_iter)?; // Noy used but sent in as PDA Trade Account owner
+    let chainlink_feed_account = next_account_info(account_info_iter)?; // Chainlink Price Feed Data Account
+    let chainlink_program = next_account_info(account_info_iter)?; // Chainlink Program Account
 
     // Guard: Signer
     if !taker_authority_account.is_signer {
       return Err(ProgramError::MissingRequiredSignature);
     }
-
-    // GET CHAINLINK PRICE HERE !!!!!!!!!
-    let chainlink_price = 47;
 
     // Get Clock
     let clock = Clock::get()?;
@@ -184,14 +204,23 @@ impl Processor {
       _ => return Err(TradeError::InvalidContractSize.into())
     }
 
-    // Guard: Transfer Lamports check
-    if **taker_authority_account.try_borrow_lamports()? < trade_lamports {
-      return Err(TradeError::NotEnoughLamports.into());
+    // Get Chainlink Price -  // REMEMBER ONLY WORKS ON DEVNET
+    let chainlink_round = chainlink::latest_round_data(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    let chainlink_asset_description = chainlink::description(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    let _chainlink_decimals = chainlink::decimals(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    let chainlink_price = chainlink_round.answer;
+
+    // Guard: Ensure Asset Matches on Trade Account
+    if chainlink_asset_description != trade_account_state.symbol {
+      msg!("Chainlink Symbol Mismatch to Account Provided");
+      return Err(TradeError::ChainlinkMismatch.into())
     }
 
-    // Transfer Lamports
-    **user_account.try_borrow_mut_lamports()? -= trade_lamports; // Not owned by Program (thus Signed)
-    **trade_account.try_borrow_mut_lamports()? += trade_lamports; // Owner by Program
+    // Guard: Ensure Chainlink Price
+    if chainlink_price == 0 {
+      msg!("Chainlink Price Received as Zero. Chainlink Data Issue.");
+      return Err(TradeError::ChainlinkDataIssue.into())
+    }
 
     // Update Trade Account
     trade_account_state.taker = *taker_authority_account.key;
@@ -213,6 +242,17 @@ impl Processor {
     user_account_state.trades_placed += 1;
     user_account_state.serialize(&mut &mut user_account.data.borrow_mut()[..])?;
 
+    // Guard: Transfer Lamports check
+    msg!("Lamports being sent: {:?}", trade_lamports);
+    if **user_account.try_borrow_lamports()? < trade_lamports {
+      msg!("Not enough SOL (lamports)");
+      return Err(TradeError::NotEnoughLamports.into());
+    }
+
+    // Transfer Lamports
+    **user_account.try_borrow_mut_lamports()? -= trade_lamports; // Not owned by Program (thus Signed)
+    **trade_account.try_borrow_mut_lamports()? += trade_lamports; // Owner by Program
+
     // Return
     Ok(())
   }
@@ -230,6 +270,8 @@ impl Processor {
     let user_account = next_account_info(account_info_iter)?; // Holder = User
     let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA)
     let system_program = next_account_info(account_info_iter)?; // Holder = Program (System Program)
+    let chainlink_feed_account = next_account_info(account_info_iter)?; // Chainlink Price Feed Data Account
+    let chainlink_program = next_account_info(account_info_iter)?; // Chainlink Program Account
 
     // Guard: Signer
     if !authority_account.is_signer {
@@ -251,6 +293,17 @@ impl Processor {
     // Guard: Ensure Account Key Received Matches PDA
     if trade_pda != *trade_account.key {
       return Err(TradeError::InvalidTradeAccount.into())
+    }
+
+    // Get Chainlink Description - // REMEMBER ONLY WORKS ON DEVNET
+    let chainlink_asset_description = chainlink::description(chainlink_program.clone(), chainlink_feed_account.clone())?;
+    msg!("Chainlink Asset Description: {:?}", &chainlink_asset_description);
+    msg!("Trade Symbol Description: {:?}", &trade.symbol);
+
+    // Guard: Ensure Asset Matches on Trade Account
+    if chainlink_asset_description != trade.symbol {
+      msg!("Chainlink Symbol Mismatch to Account Provided");
+      return Err(TradeError::ChainlinkMismatch.into())
     }
 
     // Calculate Lamports needed for PDA

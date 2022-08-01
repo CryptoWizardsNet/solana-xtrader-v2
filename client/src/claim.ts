@@ -11,21 +11,21 @@ import {
 } from '@solana/web3.js';
 import path from 'path';
 import { serialize, deserialize, deserializeUnchecked } from "borsh";
-import {getPayer, getRpcUrl, createKeypairFromFile} from './utils';
+import {getKeypair, createKeypairFromFile, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
 
 // Define Account To Trade Against
-const tradeAccount = new PublicKey("8VYN1kmMFm6PTwZtGUfx9P3kBdnHYpnjGFqtYXqr5v42"); // Enter Trade Account from 'npm run maker'
+const tradeAccount = new PublicKey("GJ2Q1RtYF75MtkvP4vnmCAxS36UGQ8n3easBpDZpNEDc"); // Enter Trade Account from 'npm run maker'
+
+// Connect
+const connection = new Connection(SELECTED_RPC_URL, "confirmed");
 
 // Run Client
 async function main() {
 
-  // Connect
-  const RPC_URL = "http://127.0.0.1:8899"
-  const connection = new Connection(RPC_URL, "confirmed");
-
   // Wallet(s)
-  const wallet = await getPayer();
+  const wallet = await getKeypair("taker"); 
+  const deleteme = await getKeypair("maker"); 
 
   // Extract Program ID Address
   const PROGRAM_PATH = path.resolve(__dirname, '../../program/target/deploy/');
@@ -47,14 +47,26 @@ async function main() {
     console.log("Wallet SOL: ", walletInfo?.lamports / LAMPORTS_PER_SOL);
   }
 
+  // System Program (Needed for PDA Creation in Program)
+  const systemProgramId = SystemProgram.programId;
 
   // Determine Instruction Accounts
   let ixAccounts = [
     {pubkey: wallet.publicKey, isSigner: true, isWritable: false},
     {pubkey: tradeAccount, isSigner: false, isWritable: true},
-    {pubkey: maker, isSigner: false, isWritable: false}, // All Accounts being used have to be passed in
-    {pubkey: taker, isSigner: false, isWritable: false}, // All Accounts being used have to be passed in
+    {pubkey: maker, isSigner: false, isWritable: true}, // All Accounts being used have to be passed in
+    {pubkey: taker, isSigner: false, isWritable: true}, // All Accounts being used have to be passed in
+    {pubkey: systemProgramId, isSigner: false, isWritable: false}, // Needed as PDA balance will change
+    {pubkey: accountChainlinkPriceFeed, isSigner: false, isWritable: false},
+    {pubkey: accountChainlinkProgramOwner, isSigner: false, isWritable: false},
   ];
+
+  console.log("tradeAccount ", tradeAccount.toBase58());
+  console.log("maker ", maker.toBase58());
+  console.log("taker ", taker.toBase58());
+  console.log("systemProgramId ", systemProgramId.toBase58());
+  console.log("accountChainlinkPriceFeed ", accountChainlinkPriceFeed.toBase58());
+  console.log("accountChainlinkProgramOwner ", accountChainlinkProgramOwner.toBase58());
 
   // Call Transaction
   const ix = new TransactionInstruction({
@@ -101,14 +113,15 @@ async function getAccountDetails(connection: Connection, account: PublicKey, ret
     borsh.u8("duration"),
     borsh.u32("unix_start"),
     borsh.u32("unix_end"),
-    borsh.u32("benchmark_price"),
-    borsh.u32("closing_price"),
+    borsh.i128("benchmark_price"),
+    borsh.i128("closing_price"),
     borsh.u8("order_status"),
   ]);
 
   // Get Account Info
   const tradeAccountInfo = await connection.getAccountInfo(account);
   if (tradeAccountInfo) {
+
     // Decode Data
     const tradeAccountData = TRADE_ACCOUNT_DATA_LAYOUT.decode(tradeAccountInfo.data);
 
@@ -131,6 +144,7 @@ async function getAccountDetails(connection: Connection, account: PublicKey, ret
     if (retrieve == "orderStatus") {
       return tradeAccountData.order_status;
     }
+
   }
 };
 
