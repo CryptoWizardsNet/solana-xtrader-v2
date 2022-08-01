@@ -6,7 +6,7 @@
 <p>Run the Deploy code presented as solana program deploy ... etc as show in the terminal after the prior step.</p>
 
 <h3>Important:</h3>
-<p>You will likely run into issues if running on localhost (http://127.0.0.1:8899).</p>
+<p>You will likely run into issues if running on localhost (http://127.0.0.1:8899). Runnin on the devnet cluster https://api.devnet.solana.com is recommended. E.g: solana config set --url https://api.devnet.solana.com.</p>
 <p>You will need to replace Clock.get(), Rent.get() and chainlink calls in the Program processor file if
 wanting to continue on localhost.
 </p>
@@ -21,5 +21,5 @@ wanting to continue on localhost.
 <p>npm run maker</p>
 <p>Paste the tradeAccount address that is printed out on the taker.ts and claim.ts fields near the top of each of the two files.</p>
 <p>This represents the Open Order set by the Maker that can be filled. Once it is filled by the Taker and the designated time has past, it can be claimed.</p>
-<p>npm run claim.</p>
+<p>npm run claim</p>
 </html>
