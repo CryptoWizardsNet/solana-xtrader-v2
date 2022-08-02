@@ -1,5 +1,6 @@
 <html>
 <h2>How to Run - Program Build</h2>
+
 <p>After cloning the repo, cd into the Program folder.</p>
 <p>Update the Cargo.toml file to represent a lib name you like.</p>
 <p>Run Cargo Buil and Cargo Build BPF.</p>
@@ -14,12 +15,19 @@ wanting to continue on localhost.
 <p>Therefore, remove the if statement Guard for that too if you want to test in real time.</p>
 
 <h2>How to Run- Client Build</h2>
+
 <p>Cd into the client folder.</p>
 <p>npm install</p>
-<p>npm run setup maker (This creates a wallet for the Market Maker)</p>
-<p>npm run setup taker (This creates a wallet for the Market Taker and also Claimer as taker is claiming)</p>
-<p>npm run maker</p>
+<p>npm run wallet maker (This creates a wallet for the Market Maker)</p>
+<p>npm run wallet taker (This creates a wallet for the Market Taker and also Claimer as taker is claiming)</p>
+<p>Ensure both maker and taker have at least 2.0 SOL</p>
+<p>npm run account-create maker</p>
+<p>npm run account-create taker</p>
+<p>npm run account-fund maker</p>
+<p>npm run account-fund taker</p>
+<p>npm run maker (represents maker placing a trade)</p>
 <p>Paste the tradeAccount address that is printed out on the taker.ts and claim.ts fields near the top of each of the two files.</p>
 <p>This represents the Open Order set by the Maker that can be filled. Once it is filled by the Taker and the designated time has past, it can be claimed.</p>
+<p>npm run taker (represents taker accepting the trade)</p>
 <p>npm run claim</p>
 </html>

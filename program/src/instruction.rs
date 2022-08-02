@@ -24,6 +24,8 @@ pub struct Take {
 // Trade Instruction
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum TradeInstruction {
+  CreateUser,
+  WithdrawBalance,
   MakeTrade(Make),
   TakeTrade(Take),
   Claim,
@@ -37,7 +39,9 @@ impl TradeInstruction {
     msg!("Expected Length: {:?}", rest.len());
 
     Ok(match tag {
-      0 => {
+      0 => Self::CreateUser,
+      1 => Self::WithdrawBalance,
+      2 => {
         let payload = Make::try_from_slice(rest).unwrap();
         msg!("Payload: {:?}", payload);
         Self::MakeTrade ( Make {
@@ -49,7 +53,7 @@ impl TradeInstruction {
           }
         )
       },
-      1 => {
+      3 => {
         let payload = Take::try_from_slice(rest).unwrap();
         msg!("Payload: {:?}", payload);
         Self::TakeTrade ( Take {
@@ -57,7 +61,7 @@ impl TradeInstruction {
           }
         )
       },
-      2 => Self::Claim,
+      4 => Self::Claim,
       _ => return Err(TradeError::InvalidInstruction.into()),
     })
   }

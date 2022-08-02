@@ -1,5 +1,4 @@
 import {
-  Keypair,
   Connection,
   PublicKey,
   SystemProgram,
@@ -7,9 +6,8 @@ import {
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
-import path from 'path';
 import { serialize } from "borsh";
-import {getKeypair, createKeypairFromFile, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
+import {getKeypair, getProgramId, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
 
 // Structure for Blog Instruction
@@ -22,7 +20,7 @@ class TakeIx {
 }
 
 // Define Account To Trade Against
-const tradeAccount = new PublicKey("GJ2Q1RtYF75MtkvP4vnmCAxS36UGQ8n3easBpDZpNEDc"); // Enter Trade Account from 'npm run maker'
+const tradeAccount = new PublicKey("J932LWXxgYyranC6YQbbb7DLNjnxnyQ5Af8aoCZaSmP1"); // Enter Trade Account from 'npm run maker'
 
 // Connect
 const connection = new Connection(SELECTED_RPC_URL, "confirmed");
@@ -35,34 +33,22 @@ async function main() {
   console.log(wallet.publicKey.toBase58());
 
   // Extract Program ID Address
-  const PROGRAM_PATH = path.resolve(__dirname, '../../program/target/deploy/');
-  const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'trade-keypair.json');
-  const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-  const PROGRAM_ID: PublicKey = programKeypair.publicKey;
+  const PROGRAM_ID = await getProgramId();
 
-  // Structure User Account Tx
-  const userSpace = 4; // Bytes
-  const userAccount = Keypair.generate();
-  const rentExemptionAmount = await connection.getMinimumBalanceForRentExemption(userSpace);
-  const createUserAccountParams = {
-    fromPubkey: wallet.publicKey,
-    newAccountPubkey: userAccount.publicKey,
-    lamports: rentExemptionAmount + 1100000000, // + 2 SOL Funding Account
-    space: userSpace,
-    programId: PROGRAM_ID,
-  };
-
-  // Create User Account
-  const createAccountTransaction = new Transaction().add(SystemProgram.createAccount(createUserAccountParams));
-  await sendAndConfirmTransaction(connection, createAccountTransaction, [wallet, userAccount,]);
+  // Generate PDA - Trade
+  const [userAccount] = await PublicKey.findProgramAddress(
+    [Buffer.from("user"), wallet.publicKey.toBuffer()],
+    PROGRAM_ID
+  );
 
   // Get User Account Trades Count (for slug)
-  const userAccountInfo = await connection.getAccountInfo(userAccount.publicKey);
+  const userAccountInfo = await connection.getAccountInfo(userAccount);
   const userTradesCount = userAccountInfo?.data.readUInt8();
+  console.log("User Account: ", userAccount.toBase58());
   console.log("User Account Info Trades Count: ", userTradesCount);
 
   // Build Instruction for Blog with Post]
-  const tradeIx = new TakeIx(1, 0); // Take, Go Long
+  const tradeIx = new TakeIx(3, 0); // Take, Go Long
   const schema = new Map([[TakeIx, { kind: 'struct', fields: [['tag', 'u8'], ['direction', 'u8']]}]]);
   const instruction_data = serialize(schema, tradeIx);
   console.log("Instruction Data: ", instruction_data.length);
@@ -73,7 +59,7 @@ async function main() {
   // Determine Instruction Accounts
   let ixAccounts = [
     {pubkey: wallet.publicKey, isSigner: true, isWritable: true},
-    {pubkey: userAccount.publicKey, isSigner: false, isWritable: true},
+    {pubkey: userAccount, isSigner: false, isWritable: true},
     {pubkey: tradeAccount, isSigner: false, isWritable: true},
     {pubkey: systemProgramId, isSigner: false, isWritable: false}, // Needed as PDA balance will change
     {pubkey: accountChainlinkPriceFeed, isSigner: false, isWritable: false},
@@ -96,7 +82,6 @@ async function main() {
 
   // View Results
   await viewTradeAccount(connection, tradeAccount);
-  // await viewAllAccounts(connection, PROGRAM_ID);
 };
 
 
@@ -130,16 +115,8 @@ async function viewTradeAccount(connection: Connection, account: PublicKey) {
   if (tradeAccountInfo) { 
     const postAccountData = TRADE_ACCOUNT_DATA_LAYOUT.decode(tradeAccountInfo.data);
     console.log("Trade Account Info: \n", postAccountData);
-    console.log(postAccountData.taker.toBase58());
   };
 };
-
-// View all Program Owned Accounts
-async function viewAllAccounts(connection: Connection, programId: PublicKey) {
-  // "processed" | "confirmed" | "finalized" | "recent" | "single" | "singleGossip" | "root" | "max" | << Optional
-  const accounts = await connection.getProgramAccounts(programId, "confirmed");
-  console.log("Program Accounts: ", accounts);
-}
 
 // Run Main
 main();

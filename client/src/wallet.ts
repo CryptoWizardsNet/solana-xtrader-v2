@@ -1,4 +1,4 @@
-import { Keypair, PublicKey, Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Keypair, Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as bip39 from "bip39";
 import { SELECTED_RPC_URL } from "./utils";
 import * as fs from "fs";
@@ -11,8 +11,8 @@ const connection = new Connection(SELECTED_RPC_URL, "confirmed");
 // Run Commands
 async function main() {
   const arg = process.argv.slice(2).toString();
+  if (!arg) {return console.log("No argument specified")};
   await createWallet(arg);
-  console.log(arg + " wallet successfully created.")
 }
 
 // Create Wallet
@@ -32,8 +32,11 @@ async function createWallet(walletLabel: string) {
   // Write Secret Key
   fs.writeFileSync(`./src/keys/${walletLabel}_pubkey.json`, JSON.stringify(keypair.publicKey.toBase58()));
   fs.writeFileSync(`./src/keys/${walletLabel}_seckey.json`, JSON.stringify(keypair.secretKey.toString()));
-
-  return keypair.publicKey;
+  
+  // Return Results
+  console.log("PublicKey: ", keypair.publicKey.toBase58());
+  console.log("Balance SOL: ", await connection.getBalance(keypair.publicKey));
+  console.log(walletLabel + " wallet successfully created.");
 }
 
 // Run Setup

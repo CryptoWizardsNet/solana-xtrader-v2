@@ -1,5 +1,4 @@
 import {
-  Keypair,
   Connection,
   PublicKey,
   SystemProgram,
@@ -7,9 +6,8 @@ import {
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
-import path from 'path';
 import { serialize } from "borsh";
-import {getKeypair, createKeypairFromFile, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
+import {getKeypair, getProgramId, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
 
 // DevNet Program Id: DDagU3EZpAsHKTg3kCptMeJLcHAoWRb6A3NssJ3yC1Sh
@@ -35,38 +33,26 @@ async function main() {
 
   // Wallet(s)
   const wallet = await getKeypair("maker"); 
-  console.log(wallet.publicKey.toBase58());
+  console.log("Wallet Account: ", wallet.publicKey.toBase58());
 
   // Extract Program ID Address
-  const PROGRAM_PATH = path.resolve(__dirname, '../../program/target/deploy/');
-  const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'trade-keypair.json');
-  const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-  const PROGRAM_ID: PublicKey = programKeypair.publicKey;
+  const PROGRAM_ID = await getProgramId();
 
-  // Structure User Account Tx
-  const userSpace = 4; // Bytes
-  const userAccount = Keypair.generate();
-  const rentExemptionAmount = await connection.getMinimumBalanceForRentExemption(userSpace);
-  const createUserAccountParams = {
-    fromPubkey: wallet.publicKey,
-    newAccountPubkey: userAccount.publicKey,
-    lamports: rentExemptionAmount,
-    space: userSpace,
-    programId: PROGRAM_ID,
-  };
-  
-  // Create User Account
-  const createAccountTransaction = new Transaction().add(SystemProgram.createAccount(createUserAccountParams));
-  await sendAndConfirmTransaction(connection, createAccountTransaction, [wallet, userAccount,]);
+  // Generate PDA - Trade
+  const [userAccount] = await PublicKey.findProgramAddress(
+    [Buffer.from("user"), wallet.publicKey.toBuffer()],
+    PROGRAM_ID
+  );
 
   // Get User Account Trades Count (for slug)
-  const userAccountInfo = await connection.getAccountInfo(userAccount.publicKey);
+  const userAccountInfo = await connection.getAccountInfo(userAccount);
   const userTradesCount = userAccountInfo?.data.readUInt8();
+  console.log("User Account: ", userAccount.toBase58());
   console.log("User Account Info Trades Count: ", userTradesCount);
 
   // Build Instruction for Blog with Post]
-  const SLUGN = 1; // Increment each time you run for Post slug (as slug is used in PDA)
-  const tradeIx = new MakeIx(0, "SOL / USD", 'trade' + SLUGN, 1, 1, 0); // Small Trade 0, Medium Trade 1, Large 2
+  const SLUGN = 5; // Increment each time you run for Post slug (as slug is used in PDA)
+  const tradeIx = new MakeIx(2, "SOL / USD", 'trade' + SLUGN, 1, 1, 0); // Small Trade 0, Medium Trade 1, Large 2
   const schema = new Map([[MakeIx, { kind: 'struct', fields: [['tag', 'u8'], ['symbol', 'string'], ['slug', 'string'], ['contract_size', 'u8'], ['direction', 'u8'], ['duration', 'u8']]}]]);
   const instruction_data = serialize(schema, tradeIx);
   console.log("Instruction Data: ", instruction_data.length);
@@ -88,7 +74,7 @@ async function main() {
   // Determine Instruction Accounts
   let ixAccounts = [
     {pubkey: wallet.publicKey, isSigner: true, isWritable: false},
-    {pubkey: userAccount.publicKey, isSigner: false, isWritable: true},
+    {pubkey: userAccount, isSigner: false, isWritable: true},
     {pubkey: tradeAccount, isSigner: false, isWritable: true},
     {pubkey: systemProgramId, isSigner: false, isWritable: false},
     {pubkey: accountChainlinkPriceFeed, isSigner: false, isWritable: false},
@@ -144,7 +130,6 @@ async function viewTradeAccount(account: PublicKey) {
   if (tradeAccountInfo) { 
     const postAccountData = TRADE_ACCOUNT_DATA_LAYOUT.decode(tradeAccountInfo.data);
     console.log("Trade Account Info: \n", postAccountData);
-    console.log(postAccountData.maker.toBase58());
   };
 };
 

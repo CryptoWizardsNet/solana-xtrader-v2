@@ -1,9 +1,12 @@
 {
   "scripts": {
+    "account-create": "ts-node src/account-create.ts",
+    "account-fund": "ts-node src/account-fund.ts",
+    "account-withdraw": "ts-node src/account-withdraw.ts",
     "claim": "ts-node src/claim.ts",
     "maker": "ts-node src/maker.ts",
-    "setup": "ts-node src/setup.ts",
-    "taker": "ts-node src/taker.ts"
+    "taker": "ts-node src/taker.ts",
+    "wallet": "ts-node src/wallet.ts"
   },
   "dependencies": {
     "@chainlink/solana-sdk": "^0.2.2",

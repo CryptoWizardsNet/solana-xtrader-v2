@@ -1,5 +1,4 @@
 import {
-  Keypair,
   Connection,
   PublicKey,
   LAMPORTS_PER_SOL,
@@ -7,15 +6,12 @@ import {
   TransactionInstruction,
   Transaction,
   sendAndConfirmTransaction,
-  Account,
 } from '@solana/web3.js';
-import path from 'path';
-import { serialize, deserialize, deserializeUnchecked } from "borsh";
-import {getKeypair, createKeypairFromFile, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
+import {getKeypair, getProgramId, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
 
 // Define Account To Trade Against
-const tradeAccount = new PublicKey("GJ2Q1RtYF75MtkvP4vnmCAxS36UGQ8n3easBpDZpNEDc"); // Enter Trade Account from 'npm run maker'
+const tradeAccount = new PublicKey("J932LWXxgYyranC6YQbbb7DLNjnxnyQ5Af8aoCZaSmP1"); // Enter Trade Account from 'npm run maker'
 
 // Connect
 const connection = new Connection(SELECTED_RPC_URL, "confirmed");
@@ -25,13 +21,9 @@ async function main() {
 
   // Wallet(s)
   const wallet = await getKeypair("taker"); 
-  const deleteme = await getKeypair("maker"); 
 
   // Extract Program ID Address
-  const PROGRAM_PATH = path.resolve(__dirname, '../../program/target/deploy/');
-  const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'trade-keypair.json');
-  const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-  const PROGRAM_ID: PublicKey = programKeypair.publicKey;
+  const PROGRAM_ID = await getProgramId();
 
   // Get Trade Claim Details
   let lamports = await getAccountDetails(connection, tradeAccount, "lamports");
@@ -72,7 +64,7 @@ async function main() {
   const ix = new TransactionInstruction({
     keys: ixAccounts,
     programId: PROGRAM_ID,
-    data: Buffer.from(new Uint8Array([2, 0])), // 0 provided to supply 'rest' expectation after tag
+    data: Buffer.from(new Uint8Array([4, 0])), // 4 = Claim, 0 provided to supply 'rest' expectation after tag
   });
 
   // Send  Instruction
@@ -144,7 +136,6 @@ async function getAccountDetails(connection: Connection, account: PublicKey, ret
     if (retrieve == "orderStatus") {
       return tradeAccountData.order_status;
     }
-
   }
 };
 

@@ -36,6 +36,14 @@ impl Processor {
 
     // Route Instruction
     match instruction {
+        TradeInstruction::CreateUser => {
+            msg!("Instruction: Creating User Program Derived Account");
+            Self::create_user_pda(program_id, accounts)
+        },
+        TradeInstruction::WithdrawBalance => {
+          msg!("Instruction: Withdrawing Balance");
+          Self::withdraw_user_account_balance(program_id, accounts)
+        },
         TradeInstruction::MakeTrade (trade) => {
             msg!("Instruction: Make Trade");
             Self::open_trade(program_id, accounts, trade)
@@ -51,6 +59,110 @@ impl Processor {
     }
   }
 
+
+  // Create User
+  fn create_user_pda(
+    program_id: &Pubkey, 
+    accounts: &[AccountInfo],
+  ) -> ProgramResult {
+
+    // Extract Accounts
+    let account_info_iter = &mut accounts.iter();
+    let authority_account = next_account_info(account_info_iter)?; // Holder = User
+    let user_account = next_account_info(account_info_iter)?; // User Account Address (only Public Key Exists at this point)
+    let system_program = next_account_info(account_info_iter)?; // Holder = Program (System Program)
+
+    // Guard: Signer
+    if !authority_account.is_signer {
+      return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Generate Program Derived Address (PDA)
+    let (user_pda, user_bump) = Pubkey::find_program_address(
+      &[b"user".as_ref(), authority_account.key.as_ref()],
+      program_id 
+    );
+
+    // Guard: Ensure Account Key Received Matches PDA
+    if user_pda != *user_account.key {
+      return Err(TradeError::InvalidUserAccount.into())
+    }
+
+    // Calculate Lamports needed for PDA
+    let rent = Rent::get()?;
+    let rent_lamports = rent.minimum_balance(User::LEN);
+
+    // Build Transaction for Trade PDA Account Creation
+    let create_user_pda_ix = &system_instruction::create_account(
+      authority_account.key,
+      user_account.key,
+      rent_lamports,
+      User::LEN.try_into().unwrap(),
+      program_id
+    );
+
+    // Create User Account (invoke signed as using PDA)
+    msg!("Creating User account");
+    invoke_signed(
+      create_user_pda_ix,
+      &[authority_account.clone(), user_account.clone(), system_program.clone()],
+      &[&[b"user".as_ref(), authority_account.key.as_ref(), &[user_bump]]]
+    )?;
+
+    // Return Result
+    msg!("User Account Created");
+    Ok(())
+  }
+
+  
+  // Withdraw Account Balance
+  fn withdraw_user_account_balance(
+    program_id: &Pubkey, 
+    accounts: &[AccountInfo],
+  ) -> ProgramResult {
+
+    // Extract Accounts
+    let account_info_iter = &mut accounts.iter();
+    let authority_account = next_account_info(account_info_iter)?; // Holder = User (Users Main Wallet)
+    let user_account = next_account_info(account_info_iter)?; // Holder = User (Users Trading Account)
+
+    // Guard: Signer
+    if !authority_account.is_signer {
+      return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Generate Program Derived Address (PDA)
+    let (user_pda, _user_bump) = Pubkey::find_program_address(
+      &[b"user".as_ref(), authority_account.key.as_ref()],
+      program_id 
+    );
+
+    // Guard: Ensure Account Key Received Matches PDA
+    if user_pda != *user_account.key {
+      return Err(TradeError::InvalidUserAccount.into())
+    }
+
+     // Calculate Lamports needed for PDA ADD BACK IN PRODUCTION !!!!!!!!!!
+     let rent = Rent::get()?;
+     let rent_lamports = rent.minimum_balance(User::LEN);
+    
+    // Ensure enough to keep account open
+    if **user_account.try_borrow_lamports()? < rent_lamports {
+      return Err(TradeError::NotEnoughLamports.into());
+    }
+
+    // Specify withdrawal amount
+    let tfer_amount = **user_account.lamports.borrow() - rent_lamports;
+
+    // Debit from_account and credit to_account
+    **user_account.try_borrow_mut_lamports()? -= tfer_amount;
+    **authority_account.try_borrow_mut_lamports()? += tfer_amount;
+
+    // Return Result
+    Ok(())
+  }
+
+
   // Claim Trade
   fn claim_trade(
     _program_id: &Pubkey,
@@ -63,7 +175,7 @@ impl Processor {
     let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA) Created by Maker
     let maker_account = next_account_info(account_info_iter)?;
     let taker_account = next_account_info(account_info_iter)?;
-    let _system_program = next_account_info(account_info_iter)?; // Noy used but sent in as PDA Trade Account owner
+    let _system_program = next_account_info(account_info_iter)?; // Not used but sent in as PDA Trade Account owner
     let chainlink_feed_account = next_account_info(account_info_iter)?; // Chainlink Price Feed Data Account
     let chainlink_program = next_account_info(account_info_iter)?; // Chainlink Program Account
 
@@ -161,9 +273,10 @@ impl Processor {
     Ok(())
   }
   
+
   // Take Trade
   fn take_trade(
-    _program_id: &Pubkey,
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
     _trade: Take,
   ) -> ProgramResult {
@@ -171,7 +284,7 @@ impl Processor {
     // Extract Accounts
     let account_info_iter = &mut accounts.iter();
     let taker_authority_account = next_account_info(account_info_iter)?; // Holder = User
-    let user_account = next_account_info(account_info_iter)?; // Holder = User
+    let user_account = next_account_info(account_info_iter)?; // Holder = Program (PDA) 
     let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA) Created by Maker
     let _system_program = next_account_info(account_info_iter)?; // Noy used but sent in as PDA Trade Account owner
     let chainlink_feed_account = next_account_info(account_info_iter)?; // Chainlink Price Feed Data Account
@@ -193,6 +306,17 @@ impl Processor {
     // Guard: Ensure A Match is Not Already Existing
     if trade_account_state.order_status != 1 {
       return Err(TradeError::AlreadyExistingTrade.into())
+    }
+
+    // Generate Program Derived Address (PDA) - To check user is payer
+    let (user_pda, _user_bump) = Pubkey::find_program_address(
+      &[b"user".as_ref(), taker_authority_account.key.as_ref()],
+      program_id 
+    );
+
+    // Guard: Ensure Account Key Received Matches PDA - To check user is payer
+    if user_pda != *user_account.key {
+      return Err(TradeError::InvalidUserAccount.into())
     }
 
     // Calculate Trade Lamports for Trade Contracts
@@ -223,7 +347,7 @@ impl Processor {
     }
 
     // Update Trade Account
-    trade_account_state.taker = *taker_authority_account.key;
+    trade_account_state.taker = *user_account.key;
     trade_account_state.unix_start = unix_start;
     trade_account_state.benchmark_price = chainlink_price;
     trade_account_state.order_status = 2;
@@ -257,6 +381,7 @@ impl Processor {
     Ok(())
   }
 
+
   // Open Trade
   fn open_trade(
     program_id: &Pubkey,
@@ -267,7 +392,7 @@ impl Processor {
     // extract Accounts
     let account_info_iter = &mut accounts.iter();
     let authority_account = next_account_info(account_info_iter)?; // Holder = User
-    let user_account = next_account_info(account_info_iter)?; // Holder = User
+    let user_account = next_account_info(account_info_iter)?; // Holder = Program (PDA)
     let trade_account = next_account_info(account_info_iter)?; // Holder = Program (PDA)
     let system_program = next_account_info(account_info_iter)?; // Holder = Program (System Program)
     let chainlink_feed_account = next_account_info(account_info_iter)?; // Chainlink Price Feed Data Account
@@ -308,19 +433,7 @@ impl Processor {
 
     // Calculate Lamports needed for PDA
     let rent = Rent::get()?;
-    let mut rent_lamports = rent.minimum_balance(Trade::LEN);
-
-    // Calculate Trade Lamports for Trade Contracts
-    let trade_lamports: u64;
-    match trade.contract_size {
-      0 => {trade_lamports = 1_000_000_00}, // 0.1 SOL
-      1 => {trade_lamports = 1_000_000_000}, // 1 SOL
-      5 => {trade_lamports = 5_000_000_000}, // 5 SOL
-      _ => return Err(TradeError::InvalidContractSize.into())
-    }
-
-    // Add Trade Lamports to Rent Lamports
-    rent_lamports += trade_lamports;
+    let rent_lamports = rent.minimum_balance(Trade::LEN);
 
     // Build Transaction for Trade PDA Account Creation
     let create_trade_pda_ix = &system_instruction::create_account(
@@ -332,11 +445,11 @@ impl Processor {
     );
 
     // Create Trade Account (invoke signed as using PDA)
-    msg!("Creating Trade account!");
+    msg!("Creating Trade account");
     invoke_signed(
       create_trade_pda_ix, 
-        &[authority_account.clone(), trade_account.clone(), system_program.clone()],
-        &[&[b"trade".as_ref(), trade.slug.as_ref(), authority_account.key.as_ref(), &[trade_bump]]]
+      &[authority_account.clone(), trade_account.clone(), system_program.clone()],
+      &[&[b"trade".as_ref(), trade.slug.as_ref(), authority_account.key.as_ref(), &[trade_bump]]]
     )?;
 
     // Get Current Trade Account State
@@ -344,7 +457,7 @@ impl Processor {
     let mut trade_account_state = try_from_slice_unchecked::<Trade>(&trade_account.data.borrow())?;
 
     // Update Trade Account Information
-    trade_account_state.maker = *authority_account.key;
+    trade_account_state.maker = *user_account.key;
     trade_account_state.bump = trade_bump;
     trade_account_state.slug = trade.slug;
     trade_account_state.symbol = trade.symbol;
@@ -361,6 +474,36 @@ impl Processor {
     let mut user_account_state = User::try_from_slice(&user_account.data.borrow())?;
     user_account_state.trades_placed += 1;
     user_account_state.serialize(&mut &mut user_account.data.borrow_mut()[..])?;
+
+    // Fund the Trade from User Account
+    // Calculate Trade Lamports for Trade Contracts
+    let trade_lamports: u64;
+    match trade.contract_size {
+      0 => {trade_lamports = 1_000_000_00}, // 0.1 SOL
+      1 => {trade_lamports = 1_000_000_000}, // 1 SOL
+      5 => {trade_lamports = 5_000_000_000}, // 5 SOL
+      _ => return Err(TradeError::InvalidContractSize.into())
+    }
+
+    // Generate Program Derived Address (PDA)
+    let (user_pda, _user_bump) = Pubkey::find_program_address(
+      &[b"user".as_ref(), authority_account.key.as_ref()],
+      program_id 
+    );
+
+    // Guard: Ensure Account Key Received Matches PDA
+    if user_pda != *user_account.key {
+      return Err(TradeError::InvalidUserAccount.into())
+    }
+
+    // Ensure enough to keep account open
+    if **user_account.try_borrow_lamports()? < trade_lamports {
+      return Err(TradeError::NotEnoughLamports.into());
+    }
+
+    // Debit from_account and credit to_account
+    **user_account.try_borrow_mut_lamports()? -= trade_lamports;
+    **trade_account.try_borrow_mut_lamports()? += trade_lamports;
 
     // Return
     msg!("Open Order Created");
