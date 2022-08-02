@@ -20,10 +20,16 @@ const connection = new Connection(SELECTED_RPC_URL, "confirmed");
 async function main() {
 
   // Wallet(s)
-  const wallet = await getKeypair("taker"); 
+  const wallet = await getKeypair("maker"); 
 
   // Extract Program ID Address
   const PROGRAM_ID = await getProgramId();
+
+  // Generate PDA - Trade
+  const [userAccount] = await PublicKey.findProgramAddress(
+    [Buffer.from("user"), wallet.publicKey.toBuffer()],
+    PROGRAM_ID
+  );
 
   // Get Trade Claim Details
   let lamports = await getAccountDetails(connection, tradeAccount, "lamports");
@@ -34,9 +40,9 @@ async function main() {
   console.log("Order Status: ", orderStatus);
 
   // Show User Account Info After Trade to Check Lamports
-  const walletInfo = await connection.getAccountInfo(wallet.publicKey);
+  const walletInfo = await connection.getAccountInfo(userAccount);
   if (walletInfo?.lamports) {
-    console.log("Wallet SOL: ", walletInfo?.lamports / LAMPORTS_PER_SOL);
+    console.log("User Account SOL: ", walletInfo?.lamports / LAMPORTS_PER_SOL);
   }
 
   // System Program (Needed for PDA Creation in Program)
@@ -54,6 +60,7 @@ async function main() {
   ];
 
   console.log("tradeAccount ", tradeAccount.toBase58());
+  console.log("userAccount ", userAccount.toBase58());
   console.log("maker ", maker.toBase58());
   console.log("taker ", taker.toBase58());
   console.log("systemProgramId ", systemProgramId.toBase58());
@@ -81,9 +88,9 @@ async function main() {
   console.log("Order Status after Claim: ",  orderStatus);
 
   // Show User Account Info After Trade to Check Lamports
-  const walletInfo2 = await connection.getAccountInfo(wallet.publicKey);
+  const walletInfo2 = await connection.getAccountInfo(userAccount);
   if (walletInfo2?.lamports) {
-    console.log("Wallet SOL After Claim: ", walletInfo2?.lamports / LAMPORTS_PER_SOL);
+    console.log("User Account SOL After Claim: ", walletInfo2?.lamports / LAMPORTS_PER_SOL);
   }
 }
 

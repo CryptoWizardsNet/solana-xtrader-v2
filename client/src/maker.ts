@@ -10,7 +10,7 @@ import { serialize } from "borsh";
 import {getKeypair, getProgramId, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
 
-// DevNet Program Id: DDagU3EZpAsHKTg3kCptMeJLcHAoWRb6A3NssJ3yC1Sh
+// DevNet Program Id: XX84Z5ozTcRcmvS72kw9PHmqqBNrYDHX9q21iu5jcSc
 
 // Structure for Blog Instruction
 class MakeIx {
@@ -51,7 +51,7 @@ async function main() {
   console.log("User Account Info Trades Count: ", userTradesCount);
 
   // Build Instruction for Blog with Post]
-  const SLUGN = 5; // Increment each time you run for Post slug (as slug is used in PDA)
+  const SLUGN = 7; // Increment each time you run for Post slug (as slug is used in PDA)
   const tradeIx = new MakeIx(2, "SOL / USD", 'trade' + SLUGN, 1, 1, 0); // Small Trade 0, Medium Trade 1, Large 2
   const schema = new Map([[MakeIx, { kind: 'struct', fields: [['tag', 'u8'], ['symbol', 'string'], ['slug', 'string'], ['contract_size', 'u8'], ['direction', 'u8'], ['duration', 'u8']]}]]);
   const instruction_data = serialize(schema, tradeIx);

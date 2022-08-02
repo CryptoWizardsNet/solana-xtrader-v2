@@ -188,7 +188,7 @@ impl Processor {
     let mut trade_account_state = try_from_slice_unchecked::<Trade>(&trade_account.data.borrow())?;
 
     // Guard: Ensure Trade is in InPlay status (i.e. not claimed by started)
-    if !trade_account_state.order_status == 2 {
+    if trade_account_state.order_status != 2 {
       msg!("Trade not in correct order status");
       return Err(TradeError::InvalidTradeForClaim.into())
     }
