@@ -10,9 +10,9 @@ import { serialize } from "borsh";
 import {getKeypair, getProgramId, accountChainlinkPriceFeed, accountChainlinkProgramOwner, SELECTED_RPC_URL} from './utils';
 import * as borsh from "@project-serum/borsh";
 
-// DevNet Program Id: XX84Z5ozTcRcmvS72kw9PHmqqBNrYDHX9q21iu5jcSc
+// DevNet Program Id: Hp519DFatkWkf1dVVYum8xQZwY6Qzr8PaKzKQU5of6KK
 
-// Structure for Blog Instruction
+// Structure for Trade Instruction
 class MakeIx {
   tag: number; symbol: string; slug: string; contract_size: number; direction: number; duration: number;
   constructor(tag: number, symbol: string, slug: string, contract_size: number, direction: number, duration: number) {
@@ -110,12 +110,14 @@ async function viewTradeAccount(account: PublicKey) {
   const TRADE_ACCOUNT_DATA_LAYOUT = borsh.struct([
     borsh.publicKey("maker"),
     borsh.publicKey("taker"),
+    borsh.publicKey("trade_account"),
     borsh.u8("bump"),
     borsh.str("slug"),
     borsh.str("symbol"),
     borsh.u8("content"),
     borsh.u8("direction"),
     borsh.u8("duration"),
+    borsh.u32("unix_created"),
     borsh.u32("unix_start"),
     borsh.u32("unix_end"),
     borsh.i128("benchmark_price"),

@@ -48,7 +48,7 @@ async function main() {
   console.log("User Account Info Trades Count: ", userTradesCount);
 
   // Build Instruction for Blog with Post]
-  const tradeIx = new TakeIx(3, 0); // Take, Go Long
+  const tradeIx = new TakeIx(3, 0); // Take
   const schema = new Map([[TakeIx, { kind: 'struct', fields: [['tag', 'u8'], ['direction', 'u8']]}]]);
   const instruction_data = serialize(schema, tradeIx);
   console.log("Instruction Data: ", instruction_data.length);
@@ -95,12 +95,14 @@ async function viewTradeAccount(connection: Connection, account: PublicKey) {
   const TRADE_ACCOUNT_DATA_LAYOUT = borsh.struct([
     borsh.publicKey("maker"),
     borsh.publicKey("taker"),
+    borsh.publicKey("trade_account"),
     borsh.u8("bump"),
     borsh.str("slug"),
     borsh.str("symbol"),
     borsh.u8("content"),
     borsh.u8("direction"),
     borsh.u8("duration"),
+    borsh.u32("unix_created"),
     borsh.u32("unix_start"),
     borsh.u32("unix_end"),
     borsh.i128("benchmark_price"),

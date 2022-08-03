@@ -452,14 +452,20 @@ impl Processor {
       &[&[b"trade".as_ref(), trade.slug.as_ref(), authority_account.key.as_ref(), &[trade_bump]]]
     )?;
 
+    // Get Clock
+    let clock = Clock::get()?;
+    let unix_created = clock.unix_timestamp as u32;
+
     // Get Current Trade Account State
     // Use Unchecked if working with Strings
     let mut trade_account_state = try_from_slice_unchecked::<Trade>(&trade_account.data.borrow())?;
 
     // Update Trade Account Information
     trade_account_state.maker = *user_account.key;
+    trade_account_state.trade_account = *trade_account.key;
     trade_account_state.bump = trade_bump;
     trade_account_state.slug = trade.slug;
+    trade_account_state.unix_created = unix_created;
     trade_account_state.symbol = trade.symbol;
     trade_account_state.contract_size = trade.contract_size;
     trade_account_state.direction = trade.direction;

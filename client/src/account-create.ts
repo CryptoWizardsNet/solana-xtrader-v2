@@ -75,7 +75,7 @@ async function viewUserAccount(account: PublicKey) {
     borsh.u32("trades_placed"),
   ]);
 
-  // Get Post Account Current Info
+  // Get User Account Current Info
   const userAccountInfo = await connection.getAccountInfo(account);
 
   // Decode and Show Post Account
